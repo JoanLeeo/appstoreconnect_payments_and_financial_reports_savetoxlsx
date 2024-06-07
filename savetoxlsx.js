@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Appstoreconnect一键下载为xlsx付款和财务报告
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/JoanLeeo/appstoreconnect_payments_and_financial_reports_savetoxlsx
 // @version      0.1
 // @description  Appstoreconnect 一键下载付款报告为xlsx格式文件
 // @author       mr.wendao
