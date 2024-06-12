@@ -9,23 +9,9 @@
 // @require      https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.3/xlsx.full.min.js
 // @grant        none
 // ==/UserScript==
-
-(function() {
+(function () {
     'use strict';
 
-    // 添加按钮
-    function addButton() {
-        var button = document.createElement('button');
-        button.innerHTML = 'Download as XLSX';
-        button.style.position = "fixed";
-        button.style.top = "100px";
-        button.style.right = "100px";
-        button.style.zIndex = "99";
-        button.addEventListener('click', downloadAndConvert);
-        document.body.appendChild(button);
-    }
-
-    // 下载
     async function downloadAndConvert() {
         var link = document.querySelector('.rightside .actions.flexdist.linkable a');
         if (!link) return;
@@ -43,19 +29,63 @@
 
         convertCSVtoXLSX(csvData, fileName);
     }
-    /// csv 转 xslx
+
     function convertCSVtoXLSX(csvData, fileName) {
-        const parsedData = Papa.parse(csvData, { skipEmptyLines: false });
+        // 使用 PapaParse 解析 CSV 数据
+        const parsedData = Papa.parse(csvData, {skipEmptyLines: false});
         if (parsedData.errors.length > 0) {
             console.error('Error parsing CSV:', parsedData.errors);
             return;
         }
 
+        // 创建工作表（worksheet）
         const worksheet = XLSX.utils.aoa_to_sheet(parsedData.data);
+
+        // 估算字符串宽度的函数，以 Excel 列宽单位为基准
+        function getWidth(str) {
+            const fontWidth = 7; // 假设一个字符的宽度为 7 像素
+            const pixelWidth = str.split('').reduce((sum, char) => {
+                const code = char.charCodeAt(0);
+                if (code >= 0x4e00 && code <= 0x9fff) {
+                    return sum + 14; // 中文字符的宽度较宽，设为 14 像素
+                } else if (code > 127) {
+                    return sum + 10; // 非 ASCII 字符的宽度设为 10 像素
+                } else {
+                    return sum + fontWidth; // ASCII 字符的宽度设为 7 像素
+                }
+            }, 0);
+            const excelWidth = Math.ceil(pixelWidth / fontWidth);
+            return Math.max(10, Math.min(50, excelWidth)); // 设置最小和最大宽度
+        }
+
+        // 根据内容长度计算每列的宽度
+        const colWidths = parsedData.data[0].map((_, colIndex) => {
+            let maxWidth = 10; // 设置默认最小宽度
+            parsedData.data.forEach(row => {
+                const cellValue = row[colIndex] || '';
+
+                const cellLength = getWidth(cellValue.toString());
+                // console.log('cellValue', cellValue, 'cellLength', cellLength);
+                if (cellLength > maxWidth) {
+                    maxWidth = cellLength;
+                }
+            });
+            return {wch: maxWidth};
+        });
+        // console.log('colWidths', colWidths);
+
+        // 将计算得到的列宽设置到工作表中
+        worksheet['!cols'] = colWidths;
+
+        // 创建新的工作簿（workbook）并添加工作表
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
-        const xlsxFile = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-        const blob = new Blob([xlsxFile], { type: 'application/octet-stream' });
+
+        // 将工作簿写入数组并创建 Blob 对象
+        const xlsxFile = XLSX.write(workbook, {bookType: 'xlsx', type: 'array'});
+        const blob = new Blob([xlsxFile], {type: 'application/octet-stream'});
+
+        // 创建下载链接并下载文件
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -63,6 +93,41 @@
         a.click();
         URL.revokeObjectURL(url);
     }
-    // 添加按钮
-    addButton();
+
+
+    // 获取需要监控的父节点
+    const parentObserver = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+            mutation.addedNodes.forEach(function (node) {
+                // console.log("检测。。。")
+                if (node.nodeType === Node.ELEMENT_NODE) {
+
+                    // 判断node下是否有需要监控的节点
+                    let aim_node = node.querySelector('.rightside .actions.flexdist.linkable');
+                    if (aim_node) {
+                        // console.log('aim_node', aim_node);
+                        // 获取aim_node的父节点
+                        const parentNode = aim_node.parentNode;
+                        parentNode.style = 'display: flex;';
+
+                        const button_node = parentNode.querySelector('button');
+                        if (!button_node) {
+                            // 添加一个下载按钮
+                            const button = document.createElement('button');
+                            button.innerHTML = 'Download as XLSX';
+                            button.addEventListener('click', downloadAndConvert);
+                            parentNode.insertBefore(button, aim_node);
+                        }
+                    }
+                }
+            });
+        });
+    });
+
+    // 监听
+    parentObserver.observe(document.body, {
+        childList: true,
+        subtree: true // 监控所有子节点的变化
+    });
+
 })();
